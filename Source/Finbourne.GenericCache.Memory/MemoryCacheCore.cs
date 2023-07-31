@@ -16,8 +16,9 @@ namespace Finbourne.GenericCache.Memory
         private readonly MemoryCacheConfig config;
         private readonly ILogger<MemoryCacheCore> logger;
         private readonly ConcurrentDictionary<string, object> store;
-        private readonly ConcurrentQueue<string> queue;
+        private readonly LinkedList<string> queue;
         private readonly ConcurrentDictionary<string, Action<string, CacheDeletionReasonEnum, object>> subscriptionsStore;
+        private readonly object _lock = new object();
 
 
         public MemoryCacheCore(MemoryCacheConfig config, ILogger<MemoryCacheCore> logger)
@@ -29,8 +30,16 @@ namespace Finbourne.GenericCache.Memory
             this.config = config;
             this.logger = logger;
             this.store = new ConcurrentDictionary<string, object>();
-            this.queue = new ConcurrentQueue<string>();
+            this.queue = new LinkedList<string>();
             this.subscriptionsStore = new ConcurrentDictionary<string, Action<string, CacheDeletionReasonEnum, object>>();
+        }
+
+        public MemoryCacheCore(MemoryCacheConfig config) : this(config, null)
+        {
+        }
+
+        public MemoryCacheCore() : this(new MemoryCacheConfig() { MaxSize = 100 }, null)
+        {
         }
 
         public Task DeleteAsync<T>(string key)
@@ -41,11 +50,11 @@ namespace Finbourne.GenericCache.Memory
                 {
                     subscription.Value(key, CacheDeletionReasonEnum.ManualDelete, removedValue);
                 }
-                logger.LogInformation($"Key {key} removed from cache.");
+                logger?.LogInformation($"Key {key} removed from cache.");
             }
             else
             {
-                logger.LogWarning($"Key {key} not found in cache.");
+                logger?.LogWarning($"Key {key} not found in cache.");
             }
             return Task.CompletedTask;
         }
@@ -54,18 +63,24 @@ namespace Finbourne.GenericCache.Memory
         {
             if (store.TryGetValue(key, out var _value))
             {
-                logger.LogInformation($"Key {key} found in cache.");
+                logger?.LogInformation($"Key {key} found in cache.");
                 value = (T)_value;
+                // Now we make sure we keep track of what was accessed last
+                lock (_lock)
+                {
+                    queue.Remove(key);
+                    queue.AddFirst(key);
+                }
                 return Task.FromResult(true);
             }
-            logger.LogInformation($"Key {key} not found in cache.");
+            logger?.LogInformation($"Key {key} not found in cache.");
             value = default;
             return Task.FromResult(false);
         }
 
         public Task PurgeAsync()
         {
-            logger.LogInformation($"Purging cache.");
+            logger?.LogInformation($"Purging cache.");
             foreach (var value in store)
             {
                 foreach (var subscription in subscriptionsStore)
@@ -80,29 +95,36 @@ namespace Finbourne.GenericCache.Memory
 
         public Task SetAsync<T>(string key, T value)
         {
-            if (store.Count >= config.MaxSize && !store.ContainsKey(key))
+            lock (_lock)
             {
-                logger.LogInformation($"Cache capacity reached. Removing oldest key.");
-                if (queue.TryDequeue(out var oldestKey))
+                if (store.Count >= config.MaxSize && !store.ContainsKey(key))
                 {
-                    store.TryRemove(oldestKey, out var oldValue);
-                    logger.LogInformation($"Oldest key {oldestKey} removed from cache.");
-                    foreach (var subscription in subscriptionsStore)
+                    logger?.LogInformation($"Cache capacity reached. Removing oldest key.");
+                    var oldestKey = queue.Last?.Value;
+                    if (!string.IsNullOrEmpty(oldestKey))
                     {
-                        subscription.Value(oldestKey, CacheDeletionReasonEnum.CapacityReached, oldValue);
+                        store.TryRemove(oldestKey, out var oldValue);
+                        logger?.LogInformation($"Oldest key {oldestKey} removed from cache.");
+                        queue.RemoveLast();
+                        foreach (var subscription in subscriptionsStore)
+                        {
+                            subscription.Value(oldestKey, CacheDeletionReasonEnum.CapacityReached, oldValue);
+                        }
                     }
                 }
+                store.AddOrUpdate(key, value, (_, _) => value);
+                // We might consider not adding this here because technically it was not used.
+                // But it seems like a cheap price for simplicity
+                queue.AddFirst(key);
             }
 
-            store.AddOrUpdate(key, value, (_, _) => value);
-            logger.LogInformation($"Key {key} added to cache.");
-            queue.Enqueue(key);
+            logger?.LogInformation($"Key {key} added to cache.");
             return Task.CompletedTask;
         }
 
         public Task UnSubscribeDeleteAsync<T>(string subscription)
         {
-            logger.LogInformation($"Unsubscribing from {subscription}.");
+            logger?.LogInformation($"Unsubscribing from id {subscription}.");
             subscriptionsStore.TryRemove(subscription, out _);
             return Task.CompletedTask;
         }
@@ -112,7 +134,7 @@ namespace Finbourne.GenericCache.Memory
             var guid = Guid.NewGuid().ToString();
             var wrappedAction = new Action<string, CacheDeletionReasonEnum, object>((k, r, v) => action(k, r, (T)v));
             subscriptionsStore.AddOrUpdate(guid, wrappedAction, (k, v) => wrappedAction);
-            logger.LogInformation($"Subscribed to {guid}.");
+            logger?.LogInformation($"Subscribed to deletion with subscription id: {guid}.");
             return Task.FromResult(guid);
         }
     }

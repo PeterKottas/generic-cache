@@ -54,6 +54,28 @@ namespace Finbourne.GenericCache.Test
             Assert.AreEqual(200, value);
         }
 
+
+        [TestMethod]
+        public void SetAsync_ShouldRemoveOldestUsedItemWhenCacheFull()
+        {
+            // Arrange
+            var logger = GetMockLogger();
+            var cacheConfig = GetTestCacheConfig();
+            var cache = new MemoryCacheCore(cacheConfig, logger);
+
+            // Act
+            cache.SetAsync("Key1", 100).Wait();
+            cache.SetAsync("Key2", 200).Wait();
+            cache.SetAsync("Key3", 300).Wait();
+            cache.TryGetAsync<int>("Key1", out _).Wait();
+            cache.SetAsync("Key4", 400).Wait();
+
+            // Assert
+            Assert.IsFalse(cache.TryGetAsync<int>("Key2", out _).Result);
+            Assert.IsTrue(cache.TryGetAsync<int>("Key1", out var value).Result);
+            Assert.AreEqual(100, value);
+        }
+
         [TestMethod]
         public void DeleteAsync_ShouldRemoveItemFromCache()
         {
