@@ -1,13 +1,7 @@
 ﻿using Finbourne.GenericCache.Core.Interface;
 using Finbourne.GenericCache.Core.Model.Enum;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Finbourne.GenericCache.Memory
 {
@@ -15,11 +9,10 @@ namespace Finbourne.GenericCache.Memory
     {
         private readonly MemoryCacheConfig config;
         private readonly ILogger<MemoryCacheCore> logger;
-        private readonly ConcurrentDictionary<string, object> store;
-        private readonly LinkedList<string> queue;
-        private readonly ConcurrentDictionary<string, Action<string, CacheDeletionReasonEnum, object>> subscriptionsStore;
-        private readonly object _lock = new object();
-
+        private readonly ConcurrentDictionary<string, object> _store;
+        private readonly LinkedList<string> _lruCache;
+        private readonly ConcurrentDictionary<string, Action<string, CacheDeletionReasonEnum, object>> _subscriptionsStore;
+        private readonly object _lock = new();
 
         public MemoryCacheCore(MemoryCacheConfig config, ILogger<MemoryCacheCore> logger)
         {
@@ -29,9 +22,10 @@ namespace Finbourne.GenericCache.Memory
             }
             this.config = config;
             this.logger = logger;
-            this.store = new ConcurrentDictionary<string, object>();
-            this.queue = new LinkedList<string>();
-            this.subscriptionsStore = new ConcurrentDictionary<string, Action<string, CacheDeletionReasonEnum, object>>();
+
+            _store = new ConcurrentDictionary<string, object>();
+            _lruCache = new LinkedList<string>();
+            _subscriptionsStore = new ConcurrentDictionary<string, Action<string, CacheDeletionReasonEnum, object>>();
         }
 
         public MemoryCacheCore(MemoryCacheConfig config) : this(config, null)
@@ -44,13 +38,17 @@ namespace Finbourne.GenericCache.Memory
 
         public Task DeleteAsync<T>(string key)
         {
-            if (store.TryRemove(key, out var removedValue))
+            if (_store.TryRemove(key, out var removedValue))
             {
-                foreach (var subscription in subscriptionsStore)
+                foreach (var subscription in _subscriptionsStore)
                 {
                     subscription.Value(key, CacheDeletionReasonEnum.ManualDelete, removedValue);
                 }
                 logger?.LogInformation($"Key {key} removed from cache.");
+                lock (_lock)
+                {
+                    _lruCache.Remove(key);
+                }
             }
             else
             {
@@ -61,15 +59,15 @@ namespace Finbourne.GenericCache.Memory
 
         public Task<bool> TryGetAsync<T>(string key, out T value)
         {
-            if (store.TryGetValue(key, out var _value))
+            if (_store.TryGetValue(key, out var _value))
             {
                 logger?.LogInformation($"Key {key} found in cache.");
                 value = (T)_value;
                 // Now we make sure we keep track of what was accessed last
                 lock (_lock)
                 {
-                    queue.Remove(key);
-                    queue.AddFirst(key);
+                    _lruCache.Remove(key);
+                    _lruCache.AddFirst(key);
                 }
                 return Task.FromResult(true);
             }
@@ -81,15 +79,15 @@ namespace Finbourne.GenericCache.Memory
         public Task PurgeAsync()
         {
             logger?.LogInformation($"Purging cache.");
-            foreach (var value in store)
+            foreach (var value in _store)
             {
-                foreach (var subscription in subscriptionsStore)
+                foreach (var subscription in _subscriptionsStore)
                 {
                     subscription.Value(value.Key, CacheDeletionReasonEnum.Purge, value.Value);
                 }
             }
-            store.Clear();
-            queue.Clear();
+            _store.Clear();
+            _lruCache.Clear();
             return Task.CompletedTask;
         }
 
@@ -97,25 +95,25 @@ namespace Finbourne.GenericCache.Memory
         {
             lock (_lock)
             {
-                if (store.Count >= config.MaxSize && !store.ContainsKey(key))
+                if (_store.Count >= config.MaxSize && !_store.ContainsKey(key))
                 {
                     logger?.LogInformation($"Cache capacity reached. Removing oldest key.");
-                    var oldestKey = queue.Last?.Value;
+                    var oldestKey = _lruCache.Last?.Value;
                     if (!string.IsNullOrEmpty(oldestKey))
                     {
-                        store.TryRemove(oldestKey, out var oldValue);
+                        _store.TryRemove(oldestKey, out var oldValue);
                         logger?.LogInformation($"Oldest key {oldestKey} removed from cache.");
-                        queue.RemoveLast();
-                        foreach (var subscription in subscriptionsStore)
+                        _lruCache.RemoveLast();
+                        foreach (var subscription in _subscriptionsStore)
                         {
                             subscription.Value(oldestKey, CacheDeletionReasonEnum.CapacityReached, oldValue);
                         }
                     }
                 }
-                store.AddOrUpdate(key, value, (_, _) => value);
+                _store.AddOrUpdate(key, value, (_, _) => value);
                 // We might consider not adding this here because technically it was not used.
                 // But it seems like a cheap price for simplicity
-                queue.AddFirst(key);
+                _lruCache.AddFirst(key);
             }
 
             logger?.LogInformation($"Key {key} added to cache.");
@@ -125,7 +123,7 @@ namespace Finbourne.GenericCache.Memory
         public Task UnSubscribeDeleteAsync<T>(string subscription)
         {
             logger?.LogInformation($"Unsubscribing from id {subscription}.");
-            subscriptionsStore.TryRemove(subscription, out _);
+            _subscriptionsStore.TryRemove(subscription, out _);
             return Task.CompletedTask;
         }
 
@@ -133,7 +131,7 @@ namespace Finbourne.GenericCache.Memory
         {
             var guid = Guid.NewGuid().ToString();
             var wrappedAction = new Action<string, CacheDeletionReasonEnum, object>((k, r, v) => action(k, r, (T)v));
-            subscriptionsStore.AddOrUpdate(guid, wrappedAction, (k, v) => wrappedAction);
+            _subscriptionsStore.AddOrUpdate(guid, wrappedAction, (k, v) => wrappedAction);
             logger?.LogInformation($"Subscribed to deletion with subscription id: {guid}.");
             return Task.FromResult(guid);
         }
