@@ -88,7 +88,10 @@ namespace Finbourne.GenericCache.Memory
                 }
             }
             _store.Clear();
-            _lruCache.Clear();
+            lock (_lock)
+            {
+                _lruCache.Clear();
+            }
             return Task.CompletedTask;
         }
 
