@@ -6,7 +6,7 @@ In the future we should probably consider further CacheProviders such as Finbour
 
 ## Installation
 
-You can install the library from NuGet Package Manager Console or Visual Studio Package Manager Console using the following command:
+*You can install the library from NuGet Package Manager Console or Visual Studio Package Manager Console using the following command:
 
 ```bash
 Install-Package Finbourne.GenericCache.Memory
@@ -17,7 +17,7 @@ Or, if you're using .NET CLI, you can use the following command:
 dotnet add package Finbourne.GenericCache.Memory
 ```
 
-While I try to show extra credit, I didn't actually publish this. Please just grab the code from Github :-)
+*While I try to show extra credit, I didn't actually publish this. Please just grab the code from Github :-)
 
 ## Usage
 First, you need to add the MemoryCacheCore and the required dependencies to the service collection in your application's Startup.cs:
