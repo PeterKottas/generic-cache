@@ -10,9 +10,12 @@ You can install the library from NuGet Package Manager Console or Visual Studio 
 
 ```bash
 Install-Package Finbourne.GenericCache.Memory
+```
 
 Or, if you're using .NET CLI, you can use the following command:
+```
 dotnet add package Finbourne.GenericCache.Memory
+```
 
 While I try to show extra credit, I didn't actually publish this. Please just grab the code from Github :-)
 
@@ -35,7 +38,8 @@ public class Startup
 
         // Add any other services as needed
     }
-}```
+}
+```
 
 We recommend using the convenience extensions method AddMemoryCache, but you can easily register components manually e.g.:
 
@@ -44,7 +48,8 @@ services.AddSingleton<IGenericCache>(provider =>
 {
     var cacheConfig = new MemoryCacheConfig { MaxSize = 100 };
     return new MemoryCacheCore(cacheConfig, provider.GetService<ILogger<MemoryCacheCore>>());
-});```
+});
+```
 
 Then, you can inject IGenericCache into your services and use it for caching data:
 
