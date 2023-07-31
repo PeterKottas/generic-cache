@@ -22,11 +22,11 @@ While I try to show extra credit, I didn't actually publish this. Please just gr
 ## Usage
 First, you need to add the MemoryCacheCore and the required dependencies to the service collection in your application's Startup.cs:
 
+```csharp
 using Finbourne.GenericCache.Core.Interface;
 using Finbourne.GenericCache.Memory;
 using Microsoft.Extensions.DependencyInjection;
 
-```csharp
 public class Startup
 {
     public void ConfigureServices(IServiceCollection services)
@@ -89,6 +89,8 @@ public class MyController : ControllerBase
     // Other action methods and class logic go here
 }
 ```
+
+We also recommend to check the [example](https://github.com/PeterKottas/generic-cache/blob/main/Source/Finbourne.GenericCache.Example/Program.cs)
 
 ## Contributing
 Contributions are welcome! Especially if these are contributions from Peter Kottas to Finbourne as a result of employment.
