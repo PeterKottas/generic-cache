@@ -30,6 +30,10 @@ namespace Finbourne.GenericCache.Example
             {
                 Console.WriteLine($"Value of key2 is not in cache, because it was correctly removed");
             }
+            else
+            {
+                Console.WriteLine($"Value of key2 is {value1_2}. It should be gone, something is wrong!!!");
+            }
             Console.ReadLine();
         }
 
