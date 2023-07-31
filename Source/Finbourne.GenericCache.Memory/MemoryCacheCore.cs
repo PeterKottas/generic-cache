@@ -97,8 +97,8 @@ namespace Finbourne.GenericCache.Memory
             {
                 if (_store.Count >= config.MaxSize && !_store.ContainsKey(key))
                 {
-                    logger?.LogInformation($"Cache capacity reached. Removing oldest key.");
                     var oldestKey = _lruCache.Last?.Value;
+                    logger?.LogInformation($"Cache capacity reached. Removing oldest key: ${oldestKey}.");
                     if (!string.IsNullOrEmpty(oldestKey))
                     {
                         _store.TryRemove(oldestKey, out var oldValue);
