@@ -36,9 +36,10 @@ namespace Finbourne.GenericCache.Memory
         {
         }
 
-        public Task DeleteAsync<T>(string key)
+        public Task<bool> DeleteAsync<T>(string key)
         {
-            if (_store.TryRemove(key, out var removedValue))
+            var wasRemoved = _store.TryRemove(key, out var removedValue);
+            if (wasRemoved)
             {
                 foreach (var subscription in _subscriptionsStore)
                 {
@@ -54,7 +55,7 @@ namespace Finbourne.GenericCache.Memory
             {
                 logger?.LogWarning($"Key {key} not found in cache.");
             }
-            return Task.CompletedTask;
+            return Task.FromResult(wasRemoved);
         }
 
         public Task<bool> TryGetAsync<T>(string key, out T value)
@@ -111,6 +112,8 @@ namespace Finbourne.GenericCache.Memory
                     }
                 }
                 _store.AddOrUpdate(key, value, (_, _) => value);
+                // If we are just updating
+                _lruCache.Remove(key);
                 // We might consider not adding this here because technically it was not used.
                 // But it seems like a cheap price for simplicity
                 _lruCache.AddFirst(key);
@@ -120,11 +123,10 @@ namespace Finbourne.GenericCache.Memory
             return Task.CompletedTask;
         }
 
-        public Task UnSubscribeDeleteAsync<T>(string subscription)
+        public Task<bool> UnSubscribeDeleteAsync<T>(string subscription)
         {
             logger?.LogInformation($"Unsubscribing from id {subscription}.");
-            _subscriptionsStore.TryRemove(subscription, out _);
-            return Task.CompletedTask;
+            return Task.FromResult(_subscriptionsStore.TryRemove(subscription, out _));
         }
 
         public Task<string> SubscribeDeleteAsync<T>(Action<string, CacheDeletionReasonEnum, T> action)

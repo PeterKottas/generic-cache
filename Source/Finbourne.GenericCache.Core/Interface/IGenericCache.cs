@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Finbourne.GenericCache.Core.Model.Enum;
+﻿using Finbourne.GenericCache.Core.Model.Enum;
 
 namespace Finbourne.GenericCache.Core.Interface
 {
@@ -13,12 +8,12 @@ namespace Finbourne.GenericCache.Core.Interface
 
         public Task SetAsync<T>(string key, T value);
 
-        public Task DeleteAsync<T>(string key);
+        public Task<bool> DeleteAsync<T>(string key);
 
         public Task PurgeAsync();
 
         public Task<string> SubscribeDeleteAsync<T>(Action<string, CacheDeletionReasonEnum, T> action);
 
-        public Task UnSubscribeDeleteAsync<T>(string subscription);
+        public Task<bool> UnSubscribeDeleteAsync<T>(string subscription);
     }
 }
