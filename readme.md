@@ -71,7 +71,7 @@ public class MyController : ControllerBase
 
     public async Task<IActionResult> GetData(string key)
     {
-        if (_cache.TryGetAsync<string>(key, out var value))
+        if (await _cache.TryGetAsync<string>(key, out var value))
         {
             _logger.LogInformation($"Data found in cache for key: {key}");
             return Ok(value);
@@ -81,7 +81,7 @@ public class MyController : ControllerBase
         var data = await GetDataFromDatabaseAsync(key);
 
         // Cache the data
-        _cache.SetAsync(key, data).Wait();
+        await _cache.SetAsync(key, data);
 
         return Ok(data);
     }
